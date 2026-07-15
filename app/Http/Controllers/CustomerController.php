@@ -23,7 +23,7 @@ class CustomerController extends Controller
             'phone' => 'required|string|max:15',
             'address' => 'required|string',
             'package_id' => 'required|exists:packages,id',
-            'billing_date' => 'required|integer|between:1|28',
+            'billing_date' => 'required|integer|between:1,28',
         ]);
 
         $yearMonth = Carbon::now()->format('Ym');
