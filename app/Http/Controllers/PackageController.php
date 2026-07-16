@@ -2,63 +2,45 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Package;
 use Illuminate\Http\Request;
 
 class PackageController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        //
+        // Menghitung jumlah pelanggan aktif per paket
+        $packages = Package::withCount(['customers' => function($query) {
+            $query->where('status', 'active');
+        }])->get();
+
+        return view('admin.packages.index', compact('packages'));
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'price' => 'required|numeric|min:0',
+            'speed_limit' => 'required|string|regex:/^\d+[M|k]\/\d+[M|k]$/',
+            'mikrotik_profile' => 'required|string|max:255',
+            'mikrotik_profile_isolated' => 'required|string|max:255',
+        ], [
+            'speed_limit.regex' => 'Format speed limit harus Rx/Tx (Contoh: 10M/10M atau 512k/512k).'
+        ]);
+
+        Package::create($request->all());
+
+        return redirect()->back()->with('success', 'Paket layanan berhasil didaftarkan.');
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function destroy(Package $package)
     {
-        //
-    }
+        if ($package->customers()->count() > 0) {
+            return redirect()->back()->with('error', 'Gagal! Paket ini masih digunakan oleh pelanggan.');
+        }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
+        $package->delete();
+        return redirect()->back()->with('success', 'Paket layanan berhasil dihapus.');
     }
 }

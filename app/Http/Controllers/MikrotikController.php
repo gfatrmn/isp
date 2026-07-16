@@ -11,14 +11,12 @@ use RouterOS\Exceptions\ClientException;
 
 class MikrotikController extends Controller
 {
-    // 1. Menampilkan Halaman Daftar Router & Form Tambah
     public function index()
     {
         $servers = MikrotikServer::all();
         return view('admin.mikrotik.index', compact('servers'));
     }
 
-    // 2. Menyimpan Data Router Baru ke Database
     public function store(Request $request)
     {
         $request->validate([
@@ -35,35 +33,30 @@ class MikrotikController extends Controller
             'username' => $request->username,
             'password' => $request->password ?? '',
             'api_port' => $request->api_port,
-            'status' => 'disconnect' // Default awal
+            'status' => 'disconnect'
         ]);
 
         return redirect()->back()->with('success', 'Router berhasil ditambahkan!');
     }
 
-    // 3. Mengetes Koneksi API ke Mikrotik (System Identity)
     public function testConnect($id)
     {
         $server = MikrotikServer::findOrFail($id);
 
         try {
-            // Konfigurasi koneksi menggunakan package RouterOS\Client
             $client = new Client((new Config())
-                ->set('host', $server->ip_address)
-                ->set('user', $server->username)
-                ->set('pass', $server->password)
-                ->set('port', (int) $server->api_port)
-                ->set('timeout', 3)
+                    ->set('host', $server->ip_address)
+                    ->set('user', $server->username)
+                    ->set('pass', $server->password)
+                    ->set('port', (int) $server->api_port)
+                    ->set('timeout', 3)
             );
 
-            // Cek identity mikrotik sebagai test read
             $query = new Query('/system/identity/print');
             $client->query($query)->read();
 
-            // Update status jika sukses
             $server->update(['status' => 'connect']);
             return redirect()->back()->with('success', "Koneksi ke {$server->name} Berhasil (Connected)!");
-
         } catch (ClientException $e) {
             $server->update(['status' => 'disconnect']);
             return redirect()->back()->with('error', "Koneksi Gagal (Client Error): " . $e->getMessage());
@@ -73,20 +66,15 @@ class MikrotikController extends Controller
         }
     }
 
-    // 4. Menampilkan Halaman Grafik Live Monitor Bandwidth
     public function monitor($id)
     {
         $server = MikrotikServer::findOrFail($id);
-
-        // Proteksi jika dicoba buka manual saat statusnya sedang terputus
         if ($server->status !== 'connect') {
-            return redirect()->route('mikrotik.index')->with('error', 'Router dalam status terputus. Silakan cek koneksi terlebih dahulu.');
+            return redirect()->route('mikrotik.index')->with('error', 'Router dalam status terputus.');
         }
-
         return view('admin.mikrotik.monitor', compact('server'));
     }
 
-    // 5. API Endpoint JSON untuk Menyuplai Data ke Chart.js (Realtime 2 Detik)
     public function getTrafficRealtime(Request $request, $id)
     {
         $interface = $request->get('interface', 'ether1');
@@ -94,17 +82,16 @@ class MikrotikController extends Controller
 
         try {
             $client = new Client((new Config())
-                ->set('host', $server->ip_address)
-                ->set('user', $server->username)
-                ->set('pass', $server->password)
-                ->set('port', (int) $server->api_port)
-                ->set('timeout', 2)
+                    ->set('host', $server->ip_address)
+                    ->set('user', $server->username)
+                    ->set('pass', $server->password)
+                    ->set('port', (int) $server->api_port)
+                    ->set('timeout', 2)
             );
 
-            // Menjalankan command monitor-traffic Mikrotik
             $query = (new Query('/interface/monitor-traffic'))
                 ->equal('interface', $interface)
-                ->equal('once', ''); // Mengambil 1 snapshot data saja
+                ->equal('once', '');
 
             $response = $client->query($query)->read();
 
@@ -113,21 +100,97 @@ class MikrotikController extends Controller
                 return response()->json([
                     'success' => true,
                     'upload'  => (int) ($data['tx-bits-per-second'] ?? 0),
-                    'download'=> (int) ($data['rx-bits-per-second'] ?? 0),
+                    'download' => (int) ($data['rx-bits-per-second'] ?? 0),
                 ]);
             }
-
-            return response()->json(['success' => false, 'message' => 'Tidak ada data yang dikembalikan oleh router.']);
+            return response()->json(['success' => false, 'message' => 'Tidak ada data.']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
 
-    // 6. Menghapus Data Router dari Sistem
     public function destroy($id)
     {
         $server = MikrotikServer::findOrFail($id);
         $server->delete();
-        return redirect()->back()->with('success', 'Router berhasil dihapus dari sistem.');
+        return redirect()->back()->with('success', 'Router berhasil dihapus.');
+    }
+
+    public function monitoring()
+    {
+        $routers = MikrotikServer::where('status', 'connect')->get();
+        return view('admin.mikrotik.monitoring', compact('routers'));
+    }
+
+    // ENDPOINT UTAMA KHUSUS TRAFIK RAW BITS PER INTERFACE ACTIVE
+    public function getSystemStatusRealtime(Request $request, $id)
+    {
+        $server = MikrotikServer::findOrFail($id);
+
+        try {
+            $client = new Client((new Config())
+                    ->set('host', $server->ip_address)
+                    ->set('user', $server->username)
+                    ->set('pass', $server->password)
+                    ->set('port', (int) $server->api_port)
+                    ->set('timeout', 2)
+            );
+
+            // Deteksi interface pertama yang running (UP) DAN BUKAN loopback/pppoe-binding
+            $interfaceQuery = new Query('/interface/print');
+            $interfaceResponse = $client->query($interfaceQuery)->read();
+
+            $targetInterface = null;
+            foreach ($interfaceResponse as $iface) {
+                $isUp = isset($iface['running']) &&
+                        ($iface['running'] === 'true' || $iface['running'] === true || $iface['running'] === 'yes');
+
+                $type = $iface['type'] ?? '';
+                $name = $iface['name'] ?? '';
+
+                // Skip loopback & pppoe-server-binding, kita mau interface fisik/uplink asli
+                $isExcluded = $type === 'loopback'
+                            || $type === 'pppoe-in'
+                            || str_contains($name, '<pppoe')
+                            || $name === 'lo';
+
+                if ($isUp && !$isExcluded) {
+                    $targetInterface = $name;
+                    break;
+                }
+            }
+
+            // Fallback kalau semua interface ke-skip / gak ketemu
+            if (!$targetInterface) {
+                $targetInterface = 'ether1';
+            }
+
+            // Ambil monitor-traffic dari target interface aktif
+            $trafficQuery = (new Query('/interface/monitor-traffic'))
+                ->equal('interface', $targetInterface)
+                ->equal('once', '');
+            $trafficResponse = $client->query($trafficQuery)->read();
+
+            $tx_bps = 0;
+            $rx_bps = 0;
+
+            if (!empty($trafficResponse) && isset($trafficResponse[0])) {
+                $tx_bps = $trafficResponse[0]['tx-bits-per-second'] ?? $trafficResponse[0]['tx-bps'] ?? 0;
+                $rx_bps = $trafficResponse[0]['rx-bits-per-second'] ?? $trafficResponse[0]['rx-bps'] ?? 0;
+            }
+
+            return response()->json([
+                'success' => true,
+                'upload' => (int) $tx_bps,
+                'download' => (int) $rx_bps,
+                'monitored_interface' => $targetInterface
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal terhubung: ' . $e->getMessage()
+            ]);
+        }
     }
 }

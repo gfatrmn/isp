@@ -35,6 +35,13 @@ Route::post('/packages', [PackageController::class, 'store'])->name('packages.st
 Route::delete('/packages/{package}', [PackageController::class, 'destroy'])->name('packages.destroy');
 
 Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
-    Route::post('/invoices/generate', [InvoiceController::class, 'generateMonthlyInvoices'])->name('invoices.generate');
+Route::post('/invoices/generate', [InvoiceController::class, 'generateMonthlyInvoices'])->name('invoices.generate');
+
+Route::get('mikrotik/monitoring', [MikrotikController::class, 'monitoring'])->name('mikrotik.monitoring');
+Route::get('api/mikrotik/{id}/status-realtime', [MikrotikController::class, 'getSystemStatusRealtime'])->name('api.mikrotik.status-realtime');
+Route::get('mikrotik/{id}/test-connect', [MikrotikController::class, 'testConnect'])->name('mikrotik.test-connect');
+Route::get('mikrotik/{id}/monitor', [MikrotikController::class, 'monitor'])->name('mikrotik.monitor');
+Route::get('api/mikrotik/{id}/traffic', [MikrotikController::class, 'getTrafficRealtime'])->name('api.mikrotik.traffic');
+Route::resource('mikrotik', MikrotikController::class)->except(['show']);
 
 require __DIR__ . '/auth.php';
