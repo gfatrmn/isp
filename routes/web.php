@@ -23,7 +23,12 @@ Route::get('/mikrotik/{id}/traffic', [MikrotikController::class, 'getTrafficReal
 Route::delete('/mikrotik/{id}', [MikrotikController::class, 'destroy'])->name('mikrotik.destroy');
 
 // Master Data Customers (Resource)
-Route::resource('customers', CustomerController::class)->except(['create', 'edit']);
+Route::resource('customers', CustomerController::class)->only([
+    'index',
+    'create',
+    'store',
+    'destroy'
+]);
 
 // PPPoE Management & Core Pull Sync Mikrotik
 Route::get('/pppoe', [PPPoEController::class, 'index'])->name('pppoe.index');
