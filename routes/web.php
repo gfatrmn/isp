@@ -6,6 +6,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\PPPoEController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\MikrotikIsolirController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -43,5 +44,9 @@ Route::get('mikrotik/{id}/test-connect', [MikrotikController::class, 'testConnec
 Route::get('mikrotik/{id}/monitor', [MikrotikController::class, 'monitor'])->name('mikrotik.monitor');
 Route::get('api/mikrotik/{id}/traffic', [MikrotikController::class, 'getTrafficRealtime'])->name('api.mikrotik.traffic');
 Route::resource('mikrotik', MikrotikController::class)->except(['show']);
+
+Route::get('/isolir', [MikrotikIsolirController::class, 'index'])->name('isolir.index');
+Route::post('/isolir/{id}/block', [MikrotikIsolirController::class, 'isolir'])->name('isolir.block');
+Route::post('/isolir/{id}/unblock', [MikrotikIsolirController::class, 'bukaIsolir'])->name('isolir.unblock');
 
 require __DIR__ . '/auth.php';

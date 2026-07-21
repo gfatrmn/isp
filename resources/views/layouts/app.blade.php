@@ -124,12 +124,12 @@
                         <span>Akun PPPoE</span>
                     </a>
 
-                    <a href="#"
+                    <a href="{{ route('isolir.index') }}"
                         class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition duration-150 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-[#a6ff00] hover:bg-slate-100 dark:hover:bg-[#1a1c21]">
                         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
-                        <span>Monitoring Aktif</span>
+                        <span>Isolir</span>
                     </a>
 
                     <a href="{{ route('packages.index') }}"
