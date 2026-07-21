@@ -60,7 +60,6 @@ class PackageController extends Controller
                     $addQuery = new \RouterOS\Query('/ppp/profile/add');
                     $addQuery->equal('name', $package->mikrotik_profile);
                     $addQuery->equal('rate-limit', $package->speed_limit); // Format e.g. 10M/10M
-                    $addQuery->equal('comment', "Created via Billing - {$package->name}");
 
                     $client->query($addQuery)->read();
                 }
