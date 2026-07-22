@@ -10,7 +10,7 @@
                 <span class="w-2 h-2 bg-emerald-500 dark:bg-[#a6ff00] rounded-full animate-pulse shadow-sm"></span>
                 Monitoring Infrastruktur
             </h1>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Pantau fluktuasi trafik bandwidth router Mikrotik secara realtime.</p>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Pantau fluktuasi trafik bandwidth router Mikrotik secara realtime via Laravel Reverb WebSocket.</p>
         </div>
 
         <!-- SELECT ROUTER -->
@@ -66,10 +66,10 @@
     <div class="w-full bg-white dark:bg-[#121316] p-5 rounded-2xl border border-slate-200 dark:border-[#1a1c21] shadow-sm">
         <div class="mb-3 pb-2.5 border-b border-slate-200 dark:border-[#1a1c21] flex items-center justify-between gap-2">
             <h2 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider font-heading flex items-center gap-2">
-                <span>📉 Grafik Bandwidth Realtime</span>
+                <span>📉 Grafik Bandwidth Realtime (Reverb Stream)</span>
             </h2>
             <span id="interfaceBadge" class="text-[9px] font-mono bg-emerald-50 text-emerald-700 dark:bg-[#a6ff00]/10 dark:text-[#a6ff00] px-2 py-0.5 rounded-md border border-emerald-200 dark:border-[#a6ff00]/20 font-bold hidden">
-                LIVE: WAN
+                LIVE: -
             </span>
         </div>
 
@@ -78,19 +78,20 @@
             <canvas id="bandwidthChart"></canvas>
         </div>
 
-        <!-- FOOTER STATUS POLLING -->
+        <!-- FOOTER STATUS WEBSOCKET -->
         <div class="mt-3 pt-2.5 border-t border-slate-100 dark:border-[#16181d] flex items-center justify-between text-[9px] font-mono text-slate-400 dark:text-slate-500">
-            <span id="debugStatus">Menyiapkan koneksi...</span>
-            <span id="pollingIndicator" class="flex items-center gap-1 hidden">
+            <span id="debugStatus">Menyiapkan koneksi WebSocket...</span>
+            <span id="wsIndicator" class="flex items-center gap-1">
                 <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                <span>Polling Active</span>
+                <span>Reverb Connected</span>
             </span>
         </div>
     </div>
 
 </div>
 
-<!-- SCRIPT MONITORING EFISIEN -->
+<!-- SCRIPT MONITORING WEBSOCKET (REVERB) -->
+@vite(['resources/js/app.js'])
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const ctx = document.getElementById('bandwidthChart').getContext('2d');
@@ -99,10 +100,8 @@
         const debugStatus = document.getElementById('debugStatus');
         const liveDownloadText = document.getElementById('liveDownloadText');
         const liveUploadText = document.getElementById('liveUploadText');
-        const pollingIndicator = document.getElementById('pollingIndicator');
 
-        let isFetching = false;
-        let pollTimer = null;
+        let activeChannel = null;
 
         // Inisialisasi Chart.js
         const bandwidthChart = new Chart(ctx, {
@@ -189,88 +188,72 @@
             liveUploadText.innerText = "0 kbps";
         }
 
-        // Fungsi Ambil Data (Prevent Overlapping Requests)
-        function fetchTrafficData() {
-            if (isFetching) return;
+        // Fungsi Listen Channel Reverb WebSocket
+        function subscribeToRouterTraffic() {
+            let routerId = routerSelect.value;
 
-            let id = routerSelect.value;
-            if (!id && routerSelect.options.length > 0) {
-                id = routerSelect.options[0].value;
+            // Stop/Leave channel sebelumnya jika user mengganti router di dropdown
+            if (activeChannel) {
+                window.Echo.leave(`mikrotik-traffic.${activeChannel}`);
+                activeChannel = null;
             }
 
-            if (!id || id === "") {
+            if (!routerId || routerId === "") {
                 debugStatus.innerText = "Status: Tidak ada router aktif yang dipilih.";
-                pollingIndicator.classList.add('hidden');
                 return;
             }
 
-            isFetching = true;
-            pollingIndicator.classList.remove('hidden');
+            activeChannel = routerId;
+            debugStatus.innerText = `Menghubungkan ke Reverb Channel: mikrotik-traffic.${routerId}...`;
 
-            fetch(`/api/mikrotik/${id}/status-realtime`, {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data || !data.success) {
-                    debugStatus.innerText = "Status Gagal: " + (data.message || 'Gagal tersambung ke Mikrotik API');
-                    return;
-                }
+            // Listen ke channel WebSocket Reverb
+            window.Echo.channel(`mikrotik-traffic.${routerId}`)
+                .listen('.TrafficUpdated', (e) => {
+                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-                // Update badge interface
-                if (data.monitored_interface) {
-                    interfaceBadge.innerText = `INTERFACE: ${data.monitored_interface.toUpperCase()}`;
-                    interfaceBadge.classList.remove('hidden');
-                }
+                    // Update Badge Interface
+                    if (e.interface) {
+                        interfaceBadge.innerText = `INTERFACE: ${e.interface.toUpperCase()}`;
+                        interfaceBadge.classList.remove('hidden');
+                    }
 
-                // Batasi jumlah titik grafik max 15 data poin
-                const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                if (bandwidthChart.data.labels.length >= 15) {
-                    bandwidthChart.data.labels.shift();
-                    bandwidthChart.data.datasets[0].data.shift();
-                    bandwidthChart.data.datasets[1].data.shift();
-                }
+                    // Batasi titik data grafik maksimal 15 poin
+                    if (bandwidthChart.data.labels.length >= 15) {
+                        bandwidthChart.data.labels.shift();
+                        bandwidthChart.data.datasets[0].data.shift();
+                        bandwidthChart.data.datasets[1].data.shift();
+                    }
 
-                bandwidthChart.data.labels.push(now);
+                    bandwidthChart.data.labels.push(now);
 
-                let rawDl = parseFloat(data.download) || 0;
-                let rawUl = parseFloat(data.upload) || 0;
+                    let rawDl = parseFloat(e.download) || 0;
+                    let rawUl = parseFloat(e.upload) || 0;
 
-                // Konversi kbps untuk chart
-                let dlKbps = parseFloat((rawDl / 1000).toFixed(1));
-                let ulKbps = parseFloat((rawUl / 1000).toFixed(1));
+                    // Konversi ke kbps untuk sumbu Y grafik
+                    let dlKbps = parseFloat((rawDl / 1000).toFixed(1));
+                    let ulKbps = parseFloat((rawUl / 1000).toFixed(1));
 
-                bandwidthChart.data.datasets[0].data.push(dlKbps);
-                bandwidthChart.data.datasets[1].data.push(ulKbps);
+                    bandwidthChart.data.datasets[0].data.push(dlKbps);
+                    bandwidthChart.data.datasets[1].data.push(ulKbps);
 
-                bandwidthChart.update();
+                    bandwidthChart.update();
 
-                // Update Stat Cards
-                liveDownloadText.innerText = formatTraffic(rawDl);
-                liveUploadText.innerText = formatTraffic(rawUl);
+                    // Update Stat Cards Realtime
+                    liveDownloadText.innerText = formatTraffic(rawDl);
+                    liveUploadText.innerText = formatTraffic(rawUl);
 
-                debugStatus.innerText = `Update terakhir: ${now} | Status: Connected`;
-            })
-            .catch(err => {
-                console.error("Gagal menarik data trafik:", err);
-                debugStatus.innerText = "Error: " + err.message;
-            })
-            .finally(() => {
-                isFetching = false;
-                pollTimer = setTimeout(fetchTrafficData, 2000);
-            });
+                    debugStatus.innerText = `Stream Aktif | Update: ${now} | Channel: mikrotik-traffic.${routerId}`;
+                });
         }
 
-        // Event listener ganti router
+        // Event listener saat user mengganti router di Select Options
         routerSelect.addEventListener('change', () => {
-            if (pollTimer) clearTimeout(pollTimer);
             resetChart();
-            isFetching = false;
-            fetchTrafficData();
+            subscribeToRouterTraffic();
         });
 
-        // Jalankan polling pertama
-        fetchTrafficData();
+        // Jalankan koneksi awal WebSocket saat halaman pertama kali dibuka
+        subscribeToRouterTraffic();
     });
 </script>
 @endsection
