@@ -7,6 +7,7 @@ use App\Http\Controllers\PPPoEController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MikrotikIsolirController;
+use App\Http\Controllers\OdpController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -21,6 +22,10 @@ Route::get('/mikrotik/test/{id}', [MikrotikController::class, 'testConnect'])->n
 Route::get('/mikrotik/{id}/monitor', [MikrotikController::class, 'monitor'])->name('mikrotik.monitor');
 Route::get('/mikrotik/{id}/traffic', [MikrotikController::class, 'getTrafficRealtime'])->name('mikrotik.traffic');
 Route::delete('/mikrotik/{id}', [MikrotikController::class, 'destroy'])->name('mikrotik.destroy');
+
+Route::get('/odp', [OdpController::class, 'index'])->name('odp.index');
+Route::post('/odp', [OdpController::class, 'store'])->name('odp.store');
+Route::delete('/odp/{odp}', [OdpController::class, 'destroy'])->name('odp.destroy');
 
 // Master Data Customers (Resource)
 Route::resource('customers', CustomerController::class)->only([

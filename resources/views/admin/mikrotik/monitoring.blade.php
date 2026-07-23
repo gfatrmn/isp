@@ -10,7 +10,7 @@
                 <span class="w-2 h-2 bg-emerald-500 dark:bg-[#a6ff00] rounded-full animate-pulse shadow-sm"></span>
                 Monitoring Infrastruktur
             </h1>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Pantau fluktuasi trafik bandwidth router Mikrotik secara realtime via Laravel Reverb WebSocket.</p>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Pantau trafik bandwidth router Mikrotik secara realtime.</p>
         </div>
 
         <!-- SELECT ROUTER -->
@@ -74,7 +74,7 @@
         </div>
 
         <!-- AREA CHART CANVAS -->
-        <div class="h-72 relative">
+        <div class="h-80 relative">
             <canvas id="bandwidthChart"></canvas>
         </div>
 
@@ -94,7 +94,8 @@
 @vite(['resources/js/app.js'])
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const ctx = document.getElementById('bandwidthChart').getContext('2d');
+        const canvasEl = document.getElementById('bandwidthChart');
+        const ctx = canvasEl.getContext('2d');
         const routerSelect = document.getElementById('routerSelect');
         const interfaceBadge = document.getElementById('interfaceBadge');
         const debugStatus = document.getElementById('debugStatus');
@@ -102,6 +103,21 @@
         const liveUploadText = document.getElementById('liveUploadText');
 
         let activeChannel = null;
+        const MAX_POINTS = 20;
+        const SMOOTHING_FACTOR = 0.35;
+
+        let smoothDl = null;
+        let smoothUl = null;
+
+        function makeGradient(ctx, colorTop) {
+            const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+            gradient.addColorStop(0, colorTop);
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            return gradient;
+        }
+
+        const gradientDl = makeGradient(ctx, 'rgba(59, 130, 246, 0.35)');
+        const gradientUl = makeGradient(ctx, 'rgba(16, 185, 129, 0.35)');
 
         // Inisialisasi Chart.js
         const bandwidthChart = new Chart(ctx, {
@@ -113,30 +129,39 @@
                         label: 'Download (RX)',
                         data: [],
                         borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                        borderWidth: 2,
+                        backgroundColor: gradientDl,
+                        borderWidth: 2.5,
                         fill: true,
-                        tension: 0.3,
-                        pointRadius: 1.5,
-                        pointHoverRadius: 4
+                        tension: 0.4,
+                        cubicInterpolationMode: 'monotone',
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHitRadius: 10,
+                        pointBackgroundColor: '#3b82f6',
                     },
                     {
                         label: 'Upload (TX)',
                         data: [],
                         borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                        borderWidth: 2,
+                        backgroundColor: gradientUl,
+                        borderWidth: 2.5,
                         fill: true,
-                        tension: 0.3,
-                        pointRadius: 1.5,
-                        pointHoverRadius: 4
+                        tension: 0.4,
+                        cubicInterpolationMode: 'monotone',
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHitRadius: 10,
+                        pointBackgroundColor: '#10b981',
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false,
+                animation: {
+                    duration: 600,
+                    easing: 'easeOutQuart'
+                },
                 interaction: {
                     intersect: false,
                     mode: 'index',
@@ -150,12 +175,21 @@
                             font: { size: 10, family: 'Space Grotesk' },
                             usePointStyle: true
                         }
+                    },
+                    tooltip: {
+                        backgroundColor: '#121316',
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 8,
+                        cornerRadius: 8,
+                        displayColors: true,
                     }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
-                        grid: { color: 'rgba(150, 150, 150, 0.1)' },
+                        grace: '10%',
+                        grid: { color: 'rgba(150, 150, 150, 0.08)' },
                         ticks: {
                             font: { size: 9, family: 'Space Grotesk' },
                             callback: function(value) { return value + ' kbps'; }
@@ -163,13 +197,18 @@
                     },
                     x: {
                         grid: { display: false },
-                        ticks: { font: { size: 8.5, family: 'Space Grotesk' } }
+                        ticks: {
+                            font: { size: 8.5, family: 'Space Grotesk' },
+                            maxRotation: 0, // KUNCI 1: Paksa teks waktu tetap horizontal tegak (tidak miring)
+                            minRotation: 0, // KUNCI 2: Paksa minimal rotasi 0 derajat
+                            autoSkip: true, // Otomatis lewati teks jika terlalu banyak/padat
+                            maxTicksLimit: 7 // Membatasi jumlah teks jam pada sumbu X agar selalu luas & rapi
+                        }
                     }
                 }
             }
         });
 
-        // Format angka bit ke kbps/Mbps
         function formatTraffic(bits) {
             let num = parseFloat(bits) || 0;
             let kbps = num / 1000;
@@ -179,6 +218,11 @@
             return kbps.toFixed(1) + ' kbps';
         }
 
+        function smooth(prev, current, factor) {
+            if (prev === null) return current;
+            return prev + factor * (current - prev);
+        }
+
         function resetChart() {
             bandwidthChart.data.labels = [];
             bandwidthChart.data.datasets[0].data = [];
@@ -186,13 +230,13 @@
             bandwidthChart.update();
             liveDownloadText.innerText = "0 kbps";
             liveUploadText.innerText = "0 kbps";
+            smoothDl = null;
+            smoothUl = null;
         }
 
-        // Fungsi Listen Channel Reverb WebSocket
         function subscribeToRouterTraffic() {
             let routerId = routerSelect.value;
 
-            // Stop/Leave channel sebelumnya jika user mengganti router di dropdown
             if (activeChannel) {
                 window.Echo.leave(`mikrotik-traffic.${activeChannel}`);
                 activeChannel = null;
@@ -206,19 +250,16 @@
             activeChannel = routerId;
             debugStatus.innerText = `Menghubungkan ke Reverb Channel: mikrotik-traffic.${routerId}...`;
 
-            // Listen ke channel WebSocket Reverb
             window.Echo.channel(`mikrotik-traffic.${routerId}`)
                 .listen('.TrafficUpdated', (e) => {
                     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-                    // Update Badge Interface
                     if (e.interface) {
                         interfaceBadge.innerText = `INTERFACE: ${e.interface.toUpperCase()}`;
                         interfaceBadge.classList.remove('hidden');
                     }
 
-                    // Batasi titik data grafik maksimal 15 poin
-                    if (bandwidthChart.data.labels.length >= 15) {
+                    if (bandwidthChart.data.labels.length >= MAX_POINTS) {
                         bandwidthChart.data.labels.shift();
                         bandwidthChart.data.datasets[0].data.shift();
                         bandwidthChart.data.datasets[1].data.shift();
@@ -229,16 +270,17 @@
                     let rawDl = parseFloat(e.download) || 0;
                     let rawUl = parseFloat(e.upload) || 0;
 
-                    // Konversi ke kbps untuk sumbu Y grafik
-                    let dlKbps = parseFloat((rawDl / 1000).toFixed(1));
-                    let ulKbps = parseFloat((rawUl / 1000).toFixed(1));
+                    smoothDl = smooth(smoothDl, rawDl, SMOOTHING_FACTOR);
+                    smoothUl = smooth(smoothUl, rawUl, SMOOTHING_FACTOR);
+
+                    let dlKbps = parseFloat((smoothDl / 1000).toFixed(1));
+                    let ulKbps = parseFloat((smoothUl / 1000).toFixed(1));
 
                     bandwidthChart.data.datasets[0].data.push(dlKbps);
                     bandwidthChart.data.datasets[1].data.push(ulKbps);
 
                     bandwidthChart.update();
 
-                    // Update Stat Cards Realtime
                     liveDownloadText.innerText = formatTraffic(rawDl);
                     liveUploadText.innerText = formatTraffic(rawUl);
 
@@ -246,13 +288,11 @@
                 });
         }
 
-        // Event listener saat user mengganti router di Select Options
         routerSelect.addEventListener('change', () => {
             resetChart();
             subscribeToRouterTraffic();
         });
 
-        // Jalankan koneksi awal WebSocket saat halaman pertama kali dibuka
         subscribeToRouterTraffic();
     });
 </script>

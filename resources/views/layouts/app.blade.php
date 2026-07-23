@@ -49,9 +49,9 @@
         <div id="sidebarBackdrop"
             class="fixed inset-0 bg-black/60 z-20 hidden md:hidden transition-opacity duration-200"></div>
 
-        <!-- SIDEBAR MODERN TANPA TREE -->
+        <!-- SIDEBAR MODERN TANPA TREE (LEBAR W-56 / COMPACT) -->
         <aside id="mainSidebar"
-            class="fixed md:relative inset-y-0 left-0 w-64 bg-white dark:bg-[#121316] text-slate-600 dark:text-slate-400 flex flex-col flex-shrink-0 -translate-x-full md:translate-x-0 z-30 md:z-auto border-r border-slate-200 dark:border-[#1a1c21] transition-colors duration-200 transition-transform ease-in-out">
+            class="fixed md:relative inset-y-0 left-0 w-56 bg-white dark:bg-[#121316] text-slate-600 dark:text-slate-400 flex flex-col flex-shrink-0 -translate-x-full md:translate-x-0 z-30 md:z-auto border-r border-slate-200 dark:border-[#1a1c21] transition-colors duration-200 transition-transform ease-in-out">
 
             <!-- Branding Header Sidebar -->
             <div
@@ -102,6 +102,16 @@
                             </path>
                         </svg>
                         <span>Server Mikrotik</span>
+                    </a>
+
+                    <a href="{{ route('odp.index') }}"
+                        class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold transition duration-150 {{ Request::is('odp*') ? 'bg-emerald-500/10 text-emerald-700 font-semibold border border-emerald-500/20 dark:bg-[#1a1c21] dark:text-[#a6ff00] dark:border-transparent' : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-[#a6ff00] hover:bg-slate-100 dark:hover:bg-[#1a1c21]' }}">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                            </path>
+                        </svg>
+                        <span>Data ODP</span>
                     </a>
 
                     <a href="{{ route('mikrotik.monitoring') }}"
