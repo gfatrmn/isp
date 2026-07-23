@@ -25,6 +25,7 @@ Route::delete('/mikrotik/{id}', [MikrotikController::class, 'destroy'])->name('m
 
 Route::get('/odp', [OdpController::class, 'index'])->name('odp.index');
 Route::post('/odp', [OdpController::class, 'store'])->name('odp.store');
+Route::put('/odp/{odp}', [OdpController::class, 'update'])->name('odp.update');
 Route::delete('/odp/{odp}', [OdpController::class, 'destroy'])->name('odp.destroy');
 
 // Master Data Customers (Resource)
